@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - EV Manager</title>
+    <style>
+        body { font-family: -apple-system, sans-serif; background: #f3f4f6; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .login-card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 320px; text-align: center; }
+        h1 { margin-bottom: 20px; color: #1f2937; }
+        input { width: 90%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; }
+        button { width: 100%; background: #2563eb; color: white; padding: 10px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; margin-top: 10px; }
+        button:hover { opacity: 0.9; }
+        .error { color: red; font-size: 14px; display: none; margin-top: 10px; }
+        .hint { font-size: 12px; color: #666; margin-top: 20px; line-height: 1.5; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <h1>⚡ EV Manager</h1>
+        <input type="text" id="username" placeholder="Username">
+        <input type="password" id="password" placeholder="Password">
+        <button onclick="handleLogin()">Login / Register</button>
+        <p id="error-msg" class="error"></p>
+        
+        <div class="hint">
+            <strong>Note:</strong> If the user does not exist, a new account will be created automatically.
+        </div>
+    </div>
+
+    <script>
+        async function handleLogin() {
+            const user = document.getElementById('username').value.trim();
+            const pass = document.getElementById('password').value.trim();
+
+            if (!user || !pass) {
+                showError("Please enter username and password");
+                return;
+            }
+
+            try {
+                // Send to Backend
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ username: user, password: pass })
+                });
+                
+                const data = await response.json();
+
+                if (response.ok) {
+                    // SAVE REAL ROLE FROM DATABASE
+                    localStorage.setItem('userRole', data.role);
+                    localStorage.setItem('username', data.username);
+                    window.location.href = '/';
+                } else {
+                    showError(data.error || "Login Failed");
+                }
+            } catch (e) {
+                showError("Server Connection Failed");
+            }
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('error-msg');
+            el.innerText = msg;
+            el.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

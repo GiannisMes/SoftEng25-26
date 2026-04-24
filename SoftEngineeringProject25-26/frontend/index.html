@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="https://js.stripe.com/v3/"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>EV Charge Manager</title>
+    <style>
+        :root { --primary: #2563eb; --success: #16a34a; --danger: #ef4444; --bg: #f3f4f6; --card: #ffffff; }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .logout-btn { background: var(--danger); padding: 5px 15px; font-size: 12px; }
+        .role-badge { font-weight: bold; padding: 4px 8px; border-radius: 4px; font-size: 12px; color: white;}
+        .role-admin { background: #1e40af; }
+        .role-member { background: #9333ea; }
+        .role-user { background: #9ca3af; }
+
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .card { background: var(--card); padding: 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .card h2 { margin-top: 0; border-bottom: 2px solid #f3f4f6; padding-bottom: 10px; }
+
+        .action-box { background: #f8fafc; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #e2e8f0; }
+        .action-title { font-weight: bold; font-size: 14px; margin-bottom: 10px; display: block; color: #475569; }
+        
+        button { color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; margin-top: 5px; width: 100%; }
+        button:hover { opacity: 0.9; }
+        
+        .btn-reserve { background: var(--primary); }
+        .btn-charge { background: var(--success); }
+        .btn-stop { background: var(--danger); }
+        .btn-cancel { background: #f59e0b; color: black; }
+        .btn-admin { background: #0f172a; }
+
+        .point-item { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; }
+        .point-item:hover { background: #eff6ff; }
+        .status-available { color: green; font-weight: bold; }
+        .status-reserved { color: orange; font-weight: bold; }
+        .status-charging { color: red; font-weight: bold; }
+        #map { width: 100%; height: 360px; border-radius: 10px; margin-bottom: 15px; background: #e5e7eb; }
+        .map-search-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+        #map-search { flex: 1; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 14px; display: none; }
+        .map-search-btn { width: 36px; height: 36px; border-radius: 8px; background: #e2e8f0; color: #0f172a; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+        .map-search-btn svg { width: 18px; height: 18px; }
+        #points-list { max-height: 320px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>⚡ EV Charge Manager</h1>
+            <div class="user-info">
+                <span id="welcome-msg">Loading...</span>
+                <button class="logout-btn" onclick="logout()">Logout</button>
+            </div>
+        </header>
+        
+        <div id="upgrade-banner" style="display:none; background: #fffbeb; border: 1px solid #fcd34d; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center;">
+            <span style="font-weight:bold; color: #92400e; margin-right: 10px;">⭐ Want to reserve chargers?</span>
+            <button style="background: #f59e0b; color: black; font-weight: bold; width: auto;" onclick="upgradeMembership()">Pay €10 & Become a Member</button>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <h2>Charging Points</h2>
+                <div class="map-search-bar">
+                    <button class="map-search-btn" type="button" onclick="toggleMapSearch()" aria-label="Toggle search">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="11" cy="11" r="7"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                    </button>
+                    <input id="map-search" type="text" placeholder="Search roads, areas...">
+                </div>
+                <div id="map"></div>
+                <div id="points-list">Loading points...</div>
+                <button style="background:#64748b" onclick="loadPoints()">↻ Refresh List</button>
+                
+                <div id="admin-tools" style="display:none; margin-top: 30px; border-top: 2px dashed #ccc; padding-top: 20px;">
+                    <span class="action-title" style="color:#ef4444">⚠️ Admin Tools</span>
+                    <button style="background: #ef4444;" onclick="resetSystem()">RESET SYSTEM</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Point Details</h2>
+                <div id="details-view">
+                    <p style="color: #666;">Click a charging point to see details.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="payment-modal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 450px; z-index: 9999;">
+        <h3 style="margin-top: 0; margin-bottom: 20px; text-align: center;">Enter Payment Details</h3>
+        
+        <form id="payment-form">
+            <div id="card-element" style="border: 1px solid #e2e8f0; padding: 16px; border-radius: 6px; background: #f8fafc; margin-bottom: 25px;"></div>
+            
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <button type="submit" id="submit-button" style="background: #059669; color: white; padding: 14px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px;">
+                    Confirm & Pay €10
+                </button>
+                
+                <button type="button" onclick="closeModal()" style="background: #ef4444; color: white; padding: 14px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px;">
+                    Cancel
+                </button>
+            </div>
+        </form>
+        
+        <div id="error-message" style="color: #dc2626; margin-top: 15px; text-align: center; font-size: 14px;"></div>
+    </div>
+
+    <template id="charging-options-template">
+        <div class="options-overlay">
+            <h3>Select Mode</h3>
+            <button class="btn-manual btn-charge">Manual (Stop whenever)</button> 
+            <button class="btn-goal btn-charge">Set Goal (Time/SOC)</button>
+        </div>
+    </template>
+
+    <template id="goal-inputs-template">
+        <div class="goal-container">
+            <h4>Set your charging goal</h4>
+            
+            <div class="input-group">
+                <label>Target SOC %:</label>
+                <input type="number" class="soc-input" min="1" max="100" step="1">
+            </div>
+            
+            <div class="button-group">
+                <button class="btn-confirm btn-charge">Confirm & Pay</button>
+                
+                <button class="btn-back" style="background: #64748b;">Back</button>
+            </div>
+        </div>
+    </template>
+
+    <script>
+        const API_URL = '/api';
+        const ROLE = localStorage.getItem('userRole');
+        const USER = localStorage.getItem('username');
+        let map = null;
+        let markers = [];
+        let mapReady = false;        
+        if (!ROLE) window.location.href = '/login';
+
+        let badgeClass = 'role-user';
+        if (ROLE === 'admin') { badgeClass = 'role-admin'; document.getElementById('admin-tools').style.display = 'block'; }
+        else if (ROLE === 'member') badgeClass = 'role-member';
+        else document.getElementById('upgrade-banner').style.display = 'block';
+
+        document.getElementById('welcome-msg').innerHTML = `User: <strong>${USER}</strong> <span class="role-badge ${badgeClass}">${ROLE.toUpperCase()}</span>`;
+
+        function logout() { localStorage.clear(); window.location.href = '/login'; }
+
+        const stripe = Stripe('pk_test_51St7qn602rHZ7EpWA1t6ACZM1rbDcpryb5H8H9q8AppepoVvPOH48mxW0G1n7xwtR0hL0CaKAll5dGRDdGJJV3JX00HHKuWPtw');  // Stripe test key
+        
+        async function upgradeMembership() {
+            const USER = localStorage.getItem('username');
+
+            if (!confirm("Pay €10.00 to become a Member?")) return;
+
+            try {
+                const response = await fetch(`${API_URL}/upgrade`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: USER })
+                });
+
+                const data = await response.json();
+
+                if (data.status !== 'success') {
+                    alert('Error: ' + (data.error || 'Failed to initialize payment'));
+                    return;
+                }
+
+                document.getElementById('payment-modal').style.display = 'block';
+                
+                const elements = stripe.elements();
+                const cardElement = elements.create('card', {
+                    style: {
+                        base: { fontSize: '16px', color: '#32325d' }
+                    }
+                });
+                cardElement.mount('#card-element');
+
+                const form = document.getElementById('payment-form');
+                const submitBtn = document.getElementById('submit-button');
+
+                form.onsubmit = async (event) => {
+                    event.preventDefault();
+                    
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = "Processing...";
+
+                    const { error, paymentIntent } = await stripe.confirmCardPayment(data.stripe_client_secret, {
+                        payment_method: { card: cardElement }
+                    });
+
+                    console.log("Stripe response:", { error, paymentIntent }); // Δες το στο F12
+
+                    if (error) {
+                        document.getElementById('error-message').textContent = error.message;
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = "Confirm & Pay €10";
+                    } else if (paymentIntent && paymentIntent.status === 'succeeded') {
+                        const confirmRes = await fetch(`${API_URL}/confirm-upgrade`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username: USER })
+                        });
+
+                        if (confirmRes.ok) {
+                            alert("Success! You are now a Member.");
+                            localStorage.setItem('userRole', 'member');
+                            window.location.reload(); 
+                        } else {
+                            alert("Payment successful, but database update failed. Please contact support.");
+                        }
+                    }
+                    cardElement.clear(); // Clears the credit card numbers for the next use
+                    submitBtn.disabled = false;
+                };
+
+            } catch (error) {
+                console.error("Upgrade Error:", error);
+                alert('Network error. Please try again later.');
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('payment-modal').style.display = 'none';
+        }
+
+        async function resetSystem() {
+            if(confirm("Delete ALL data?")) { await fetch(`${API_URL}/admin/resetpoints`, { method: 'POST' }); loadPoints(); }
+        }
+
+        function toggleMapSearch() {
+            const input = document.getElementById('map-search');
+            const visible = input.style.display !== 'none';
+            input.style.display = visible ? 'none' : 'block';
+            if (!visible) input.focus();
+        }
+
+        window.initMap = function initMap() {
+            const atticaBounds = {
+                north: 38.35,
+                south: 37.55,
+                east: 24.25,
+                west: 22.85
+            };
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: 37.9838, lng: 23.7275 },
+                zoom: 13,
+                mapTypeControl: false,
+                streetViewControl: false,
+                restriction: {
+                    latLngBounds: atticaBounds,
+                    strictBounds: true
+                }
+            });
+            mapReady = true;
+            const input = document.getElementById('map-search');
+            const searchBox = new google.maps.places.SearchBox(input);
+            map.addListener('bounds_changed', () => {
+                searchBox.setBounds(map.getBounds());
+            });
+            searchBox.addListener('places_changed', () => {
+                const places = searchBox.getPlaces();
+                if (!places || places.length === 0) return;
+                const place = places[0];
+                if (!place.geometry || !place.geometry.location) return;
+                if (place.geometry.viewport) {
+                    map.fitBounds(place.geometry.viewport);
+                } else {
+                    map.setCenter(place.geometry.location);
+                    map.setZoom(14);
+                }
+            });
+            map.addListener('zoom_changed', updateMarkerIcons);
+            loadPoints();
+        };
+        window.onload = () => { if (!mapReady) loadPoints(); };
+        async function loadPoints() {
+            const res = await fetch(`${API_URL}/points`);
+            const points = await res.json();
+            const list = document.getElementById('points-list');
+            list.innerHTML = '';
+            points.forEach(p => {
+                const div = document.createElement('div');
+                div.className = 'point-item';
+                div.innerHTML = `<span>${p.providerName}</span><span class="status-${p.status}">${p.status.toUpperCase()}</span>`;
+                div.onclick = () => loadDetails(p.pointid);
+                list.appendChild(div);
+            });
+            renderMarkers(points);
+        }
+
+        function markerIcon(status, size) {
+            let url = 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png';
+            if (status === 'available') url = 'https://maps.google.com/mapfiles/ms/icons/green-dot.png';
+            if (status === 'charging') url = 'https://maps.google.com/mapfiles/ms/icons/red-dot.png';
+            if (status === 'reserved') url = 'https://maps.google.com/mapfiles/ms/icons/orange-dot.png';
+            if (status === 'malfunction') url = 'https://maps.google.com/mapfiles/ms/icons/purple-dot.png';
+            return { url: url, scaledSize: new google.maps.Size(size, size) };
+        }
+
+        function getMarkerSize() {
+            if (!map) return 24;
+            const z = map.getZoom() || 13;
+            if (z <= 11) return 14;
+            if (z <= 13) return 18;
+            if (z <= 15) return 22;
+            return 26;
+        }
+
+        function getMarkerOpacity() {
+            if (!map) return 0.8;
+            const z = map.getZoom() || 13;
+            if (z <= 11) return 0.55;
+            if (z <= 13) return 0.7;
+            return 0.95;
+        }
+
+        function updateMarkerIcons() {
+            if (!mapReady) return;
+            const size = getMarkerSize();
+            const opacity = getMarkerOpacity();
+            markers.forEach(m => {
+                m.setIcon(markerIcon(m._status, size));
+                m.setOpacity(opacity);
+            });
+        }
+
+        function renderMarkers(points) {
+            if (!mapReady) return;
+            markers.forEach(m => m.setMap(null));
+            markers = [];
+
+            const bounds = new google.maps.LatLngBounds();
+            points.forEach(p => {
+                if (p.lat == null || p.lon == null) return;
+                const pos = { lat: parseFloat(p.lat), lng: parseFloat(p.lon) };
+                const size = getMarkerSize();
+                const marker = new google.maps.Marker({
+                    position: pos,
+                    map: map,
+                    icon: markerIcon(p.status, size),
+                    opacity: getMarkerOpacity(),
+                    title: `ID ${p.pointid} (${p.providerName})`
+                });
+                marker._status = p.status;
+                marker.addListener('click', () => loadDetails(p.pointid));
+                markers.push(marker);
+                bounds.extend(pos);
+            });            if (markers.length === 1) {
+                map.setCenter(bounds.getCenter());
+                map.setZoom(15);
+            } else if (markers.length > 1) {
+                map.fitBounds(bounds, 40);
+            }
+        }
+
+        async function loadDetails(id) {
+            const res = await fetch(`${API_URL}/point/${id}`);
+            const p = await res.json();
+            if (mapReady && p.lat != null && p.lon != null) {
+                map.panTo({ lat: parseFloat(p.lat), lng: parseFloat(p.lon) });
+            } 
+            
+            let html = `<div style="margin-bottom:20px;">
+                            <p><strong>Name:</strong> ${p.providerName || 'Unknown'}</p>
+                            <p><strong>ID:</strong> ${p.pointid}</p>
+                            <p><strong>Status:</strong> 
+                            <span class="status-${p.status}">${p.status.toUpperCase()}</span>
+                            <p><strong>Kwh Price:</strong> ${p.kwhprice}</p>
+                        </p>`;
+            
+            // Show Holder Info ONLY if Admin or Owner
+            if (p.holder && (ROLE === 'admin' || p.holder === USER)) {
+                html += `<p><strong>Used By:</strong> <span style="color:blue">${p.holder}</span></p>`;
+            }
+            html += `</div>`;
+
+            // 1. AVAILABLE
+            if (p.status === 'available') {
+                html += `<div class="action-box" id="action-area">
+                            <span class="action-title">🔌 Charging</span>
+                                
+                            <button class="btn-charge" onclick="showChargingOptions(${p.pointid})">
+                                Start Charging Session
+                            </button>
+                        </div>`;
+                
+                if (ROLE === 'admin' || ROLE === 'member') {
+                    html += `<div class="action-box" id="action-area">
+                                <span class="action-title">📅 Reservation</span>
+                                <div style="margin: 10px 0;">
+                                    <label>Duration: </label>
+                                    <select id="res-minutes" style="padding: 2px;">
+                                        <option value="15">15 min</option>
+                                        <option value="30">30 min</option>
+                                        <option value="45">45 min</option>
+                                    </select>
+                                </div>
+                                <button class="btn-reserve" onclick="doAction('reserve', ${p.pointid})">
+                                    Reserve Now
+                                </button>
+                            </div>`;
+                }
+            } 
+            // 2. CHARGING
+            else if (p.status === 'charging') {
+                if (p.holder === USER || ROLE === 'admin') {
+                    html += `<div class="action-box" id="action-area" style="background:#fef2f2; border-color:#fecaca">
+                                <span class="action-title" style="color:#b91c1c">🛑 Active Session</span>
+                                <p>Your session is active.</p>
+                                <button class="btn-stop" onclick="stopCharging(${p.pointid})">
+                                    Stop Charging
+                                </button>
+                            </div>`;
+                } else {
+                    html += `<div class="action-box"><p>Charging in progress by another user.</p></div>`;
+                }
+            } 
+            // 3. RESERVED
+            else if (p.status === 'reserved') {
+                if (p.holder === USER || ROLE === 'admin') {
+                    html += `<div class="action-box" id="action-area" style="background:#fffbeb; border-color:#fde68a">
+                                <span class="action-title" style="color:#b45309">📅 Your Reservation</span>
+                                <p>You have reserved this point.</p>
+                                
+                                <button class="btn-charge" onclick="showChargingOptions(${p.pointid})">
+                                    Arrived? Start Charging
+                                </button>
+
+                                <button class="btn-cancel" onclick="doAction('reserve/cancel', ${p.pointid})">
+                                    Cancel Reservation
+                                </button>
+                            </div>`;
+                } else {
+                    html += `<div class="action-box"><p>Reserved by another user.</p></div>`;
+                }
+            }
+            
+            if (ROLE === 'admin') {
+                html += `<div class="action-box" id="action-area" style="background:#eff6ff; border-top: 2px dashed #cbd5e1;">
+                            <span class="admin-title">🛠️ Admin Force Controls</span>
+                            <label>Force Status:</label>
+                            <select id="new-status">
+                                <option value="available">Available</option>
+                                <option value="charging">Charging</option>
+                                <option value="reserved">Reserved</option>
+                                <option value="malfunction">Malfunction</option>
+                            </select>
+                            <label>Price (€):</label>
+                            <input type="number" id="new-price" value="${p.kwhprice}" step="0.01">
+                            <button class="btn-admin" onclick="adminUpdate(${p.pointid})">
+                                Apply Changes
+                            </button>
+                        </div>`;
+            }
+
+            document.getElementById('details-view').innerHTML = html;
+        }
+
+        function showChargingOptions(id) {
+            const container = document.getElementById('action-area');
+            const template = document.getElementById('charging-options-template');
+            
+            const clone = template.content.cloneNode(true);
+
+            const manualBtn = clone.querySelector('.btn-manual');
+            if (ROLE !== 'member' && ROLE !== 'admin') {
+                manualBtn.style.display = 'none'; 
+                
+                const note = document.createElement('p');
+                note.innerHTML = `<small style="color:orange">⭐ Members can use Manual Stop.</small>`;
+                clone.querySelector('.options-overlay').prepend(note);
+            } else {
+                manualBtn.onclick = () => {
+                    doAction('charge/start', id);
+                };
+            }
+
+            clone.querySelector('.btn-goal').onclick = () => showGoalInputs(id);
+
+            container.innerHTML = ''; 
+            container.appendChild(clone);
+        }
+
+        function showGoalInputs(id) {
+            const container = document.getElementById('action-area');
+            const template = document.getElementById('goal-inputs-template');
+            const clone = template.content.cloneNode(true);
+
+            const confirmBtn = clone.querySelector('.btn-confirm');
+
+            confirmBtn.onclick = function() {
+                const socValue = container.querySelector('.soc-input').value;
+
+                startChargingUpfront(id, socValue);
+            };
+
+            clone.querySelector('.btn-back').onclick = () => showChargingOptions(id);
+
+            container.innerHTML = ''; 
+            container.appendChild(clone);
+        }
+                
+        async function startChargingUpfront(id, targetSoc) { 
+            const startTime = new Date();
+            
+            const payload = {
+                id: parseInt(id),
+                username: USER,
+                starttime: startTime.toISOString(),
+                endsoc: parseInt(targetSoc),
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/newsession`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    document.getElementById('payment-modal').style.display = 'block';
+                    const totalAmount = data.amount ? data.amount.toFixed(2) : "0.00";
+                    
+                    const submitBtn = document.getElementById('submit-button');
+                    submitBtn.textContent = `Confirm & Pay €${totalAmount}`;
+
+                    const elements = stripe.elements();
+                    const cardElement = elements.create('card', {
+                        style: { base: { fontSize: '16px', color: '#32325d' } }
+                    });
+                    cardElement.mount('#card-element');
+
+                    const form = document.getElementById('payment-form');
+
+                    form.onsubmit = async (event) => {
+                        event.preventDefault();
+                        submitBtn.disabled = true;
+                        submitBtn.textContent = "Processing...";
+
+                        const { error, paymentIntent } = await stripe.confirmCardPayment(data.stripe_client_secret, {
+                            payment_method: { card: cardElement }
+                        });
+
+                        if (error) {
+                            document.getElementById('error-message').textContent = error.message;
+                            submitBtn.disabled = false;
+                            submitBtn.textContent = `Confirm & Pay €${totalAmount}`;
+                        } else if (paymentIntent && paymentIntent.status === 'succeeded') {
+                            const confirmRes = await fetch(`${API_URL}/sessionpayment`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ point_id: id, username: USER })
+                            });
+
+                            if (confirmRes.ok) {
+                                closeModal(); 
+                                updateUI(id); 
+                                alert("Success! Your charging session has started.");
+                            } else {
+                                alert("Payment successful, but server update failed.");
+                            }
+                        }
+                        cardElement.clear(); // Clears the credit card numbers for the next use
+                        submitBtn.disabled = false;
+                    };
+                } else {
+                    alert('Error: ' + (data.message || 'Failed to start session.'));
+                }
+            } catch (error) {  
+                alert('Network error: ' + error.message); 
+            }
+        }
+
+        async function stopCharging(pointId) {
+            try {
+                const response = await fetch(`${API_URL}/charge/stop/${pointId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        username: USER, 
+                        role: ROLE 
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Check if backend sent a payment intent secret
+                    if (data.client_secret) {
+                        // 1. Show the modal
+                        document.getElementById('payment-modal').style.display = 'block';
+                        const totalAmount = data.total_cost ? data.total_cost.toFixed(2) : "0.00";
+                    
+                        const submitBtn = document.getElementById('submit-button');
+                        submitBtn.textContent = `Confirm & Pay €${totalAmount}`;
+                
+
+                        // 3. Mount Stripe Elements (important to clear it first)
+                        const elements = stripe.elements();
+                        const cardElement = elements.create('card', {
+                            style: { base: { fontSize: '16px', color: '#32325d' } }
+                        });
+                        cardElement.mount('#card-element');
+
+                        // 4. Handle the specific payment submission
+                        const form = document.getElementById('payment-form');
+                        form.onsubmit = async (e) => {
+                            e.preventDefault();
+                            submitBtn.disabled = true;
+                    
+                            const { error, paymentIntent } = await stripe.confirmCardPayment(data.client_secret, {
+                                payment_method: { card: cardElement }
+                            });
+
+                            if (error) {
+                                alert("Payment Failed: " + error.message);
+                                submitBtn.disabled = false;
+                            } else if (paymentIntent.status === 'succeeded') {
+                                closeModal();
+                                updateUI(pointId);
+                                alert("Payment successful. Session finalized.");
+                            }
+                        };
+                    } else {
+                        // No payment needed (Cost was 0 or user has subscription)
+                        alert("Session stopped. No balance due.");
+                        updateUI(pointId);
+                    }
+                } else {
+                    alert("Error stopping session: " + data.message);
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function updateUI(id) {
+            loadPoints();      
+            loadDetails(id); 
+        }
+ 
+        async function doAction(action, id) {
+
+            endpoint = `${API_URL}/${action}/${id}`;
+            let selectedMinutes = 30;
+            if (action === 'reserve') {
+                const minutesDropdown = document.getElementById('res-minutes');
+                if (minutesDropdown) {
+                    selectedMinutes = parseInt(minutesDropdown.value);
+                    endpoint = `${API_URL}/${action}/${id}/${selectedMinutes}`;
+                }
+            }
+            
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ point_id: id, username: USER, role: ROLE, minutes: selectedMinutes })
+            });
+            const data = await res.json();
+            if(res.ok) { alert("Success!"); loadPoints(); loadDetails(id); }
+            else { alert("Error: " + data.error); }
+        }
+
+        async function adminUpdate(id) {
+            const price = document.getElementById('new-price').value;
+            const status = document.getElementById('new-status').value;
+            await fetch(`${API_URL}/updpoint/${id}`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({kwhprice: parseFloat(price), status: status}) });
+            alert('Updated!'); 
+            loadPoints(); 
+            loadDetails(id);
+        }
+    </script>
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key={{ maps_api_key }}&libraries=places&callback=initMap"></script>
+</body>
+</html>
+
+
+

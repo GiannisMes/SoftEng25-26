@@ -1,0 +1,5 @@
+id,name,longitude,latitude,status,kilowatts,kwh_price,address
+1650055,ChargingGrid Alpha,24.0112,37.7789,available,50,0.50,Attica
+1650056,FastCharge Beta,24.0198,37.7348,available,22,0.45,Attica
+1650057,GreenDrive Gamma,24.0212,37.7125,offline,100,0.60,Attica
+1650058,VoltHub Delta,24.0156,37.7659,available,50,0.55,Attica
