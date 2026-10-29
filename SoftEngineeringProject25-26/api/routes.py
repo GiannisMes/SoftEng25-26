@@ -23,7 +23,7 @@ sessions_schema = SessionSchema(many=True)
 history_schema = StatusHistorySchema(many=True)
 
 @api_bp.route('/')
-def home(): return render_template('index.html', maps_api_key='AIzaSyB9kVZlOsQSZtz7cOA48JQCh7qr_hM4byM')
+def home(): return render_template('index.html', maps_api_key=os.getenv('GOOGLE_MAPS_API_KEY', ''))
 
 @api_bp.route('/login')
 def login_page(): return render_template('login.html')

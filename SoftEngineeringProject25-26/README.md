@@ -6,5 +6,7 @@
 Έπειτα πηγαίνετε στο φάκελο όπου έχει τοποθετηθεί το project και εκτελείτε pip install 'module', όπου module είναι το όνομα του python module.<br>
 Αυτή η εντολή πρέπει να γίνει για τα εξής modules: flask, flask_cors, marshmallow, mysql-connector-python, stripe
 
+Τα κλειδιά (Google Maps, Stripe) δεν υπάρχουν στο repo: ορίστε τα ως μεταβλητές περιβάλλοντος `GOOGLE_MAPS_API_KEY` και `STRIPE_SECRET_KEY` (δείτε το `.env.example`).<br>
+
 Μετά εκτελείτε την εντολή python -m backend.populate για να δημιουργηθεί η βάση δεδομένων.<br>
 Με python run.py δημιουργείται ένας flask server, και ψάχνοντας το 'http://127.0.0.1:9876/' σε έναν web browser, θα εμφανιστεί η ιστοσελίδα.

@@ -9,7 +9,7 @@ import random
 
 # SIMULATE PAYMENT API WITH STRIPE 
 import stripe
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "sk_test_51St7qn602rHZ7EpW1eKRiowudP8YbIGC4fkbPPLzrBKKQOdlCfQIpO19hNp2zgjfAyVGrukNHc1eIN88Ri5atWa600a6sovqk9")
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
 # User Account
 
